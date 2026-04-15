@@ -1,0 +1,31 @@
+[project]
+name = "fraud-disputes-resolution"
+version = "0.1.0"
+description = "Production-grade multi-agent fraud dispute resolution system built with LangGraph + Claude"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.2",
+    "langgraph-checkpoint-sqlite>=2.0",
+    "langchain>=0.3",
+    "langchain-anthropic>=0.3",
+    "langchain-core>=0.3",
+    "langsmith>=0.2",
+    "chromadb>=0.5",
+    "pydantic>=2.0",
+    "python-dotenv",
+    "rich",
+    "langchain-openai>=1.1.13",
+]
+
+[project.optional-dependencies]
+prod = [
+    "langgraph-checkpoint-postgres",
+    "asyncpg",
+    "fastapi",
+    "uvicorn[standard]",
+]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]

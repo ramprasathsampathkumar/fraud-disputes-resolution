@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets — never commit
+.env
+
+# LangGraph / SQLite checkpoints
+*.db
+*.sqlite
+
+# macOS
+.DS_Store
+
+# Claude memory
+.claude/
