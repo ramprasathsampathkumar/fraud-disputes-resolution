@@ -433,6 +433,7 @@ name = "fraud-disputes-resolution"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "aiosqlite" },
     { name = "chromadb" },
     { name = "langchain" },
     { name = "langchain-anthropic" },
@@ -460,6 +461,7 @@ prod = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "asyncpg", marker = "extra == 'prod'" },
     { name = "chromadb", specifier = ">=0.5" },
     { name = "fastapi", marker = "extra == 'prod'" },
