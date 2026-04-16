@@ -539,6 +539,13 @@ async def main():
         console.print("\n[dim]Graph structure (Mermaid):[/dim]")
         console.print(f"[dim]{app.get_graph().draw_mermaid()}[/dim]")
 
+        try:
+            png_path = "phase1_2_state_machine/graph.png"
+            app.get_graph().draw_mermaid_png(output_file_path=png_path)
+            console.print(f"[dim]Graph saved → [bold]{png_path}[/bold] (open to view)[/dim]")
+        except Exception:
+            console.print("[dim]Graph PNG skipped (mermaid.ink unreachable — paste Mermaid output into mermaid.live)[/dim]")
+
         dispute_ids = [args.dispute] if args.dispute else list(DISPUTES.keys())
 
         for dispute_id in dispute_ids:
