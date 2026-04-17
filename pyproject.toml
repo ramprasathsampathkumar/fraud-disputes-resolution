@@ -17,6 +17,7 @@ dependencies = [
     "rich",
     "langchain-openai>=1.1.13",
     "aiosqlite>=0.22.1",
+    "langgraph-cli[inmem]>=0.4.22",
 ]
 
 [project.optional-dependencies]

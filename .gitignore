@@ -16,6 +16,12 @@ wheels/
 *.db
 *.sqlite
 
+# LangGraph dev server state
+.langgraph_api/
+
+# Generated graph images (regenerated on each run)
+*.png
+
 # macOS
 .DS_Store
 
