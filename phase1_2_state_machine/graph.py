@@ -403,6 +403,9 @@ def build_graph(checkpointer=None):
     g.add_edge("human_review", "notify")
     g.add_edge("notify",       END)
 
+    from langgraph.checkpoint.base import BaseCheckpointSaver
+    if not isinstance(checkpointer, BaseCheckpointSaver):
+        checkpointer = None
     return g.compile(checkpointer=checkpointer)
 
 

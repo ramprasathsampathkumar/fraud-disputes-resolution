@@ -34,29 +34,39 @@ Four disputes, each designed to exercise a different code path:
 ## System Architecture
 
 ```
-Customer Disputes Transaction
-            ↓
-     Intake & Enrichment
-            ↓
-   ┌────────┼────────┐
-   ↓        ↓        ↓        (parallel — Phase 2.2)
-Merchant  Customer  Velocity &
-Intel     Profile   Location
-Analysis  Analysis  Analysis
-   └────────┼────────┘
-            ↓
-     Fraud Score & Decision
-            ↓
-   ┌────────┴────────┐
-   ↓                 ↓
-Auto-Credit      Human Review
-(score > 0.8,    (score 0.4–0.8,
- amount < $500)   or amount ≥ $500)
-   ↓                 ↓
-Customer         Analyst reviews evidence
-Notified         brief → approves/denies
-                         ↓
-                  Customer Notified
+┌─────────────────────────────────────────────────────────┐
+│                AIRFLOW (Phase 6)                        │
+│  Batch scheduler · SLA monitor · Data refresh pipelines │
+│                         │                               │
+│         Polls Postgres for PENDING disputes             │
+│                         ↓                               │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │            LANGGRAPH RUNTIME                     │   │
+│  │                                                  │   │
+│  │  Customer Disputes Transaction                   │   │
+│  │              ↓                                   │   │
+│  │       Intake & Enrichment                        │   │
+│  │              ↓                                   │   │
+│  │  ┌────────┬──────┬────────┐  (parallel Ph 2.2)  │   │
+│  │  ↓        ↓      ↓        ↓                      │   │
+│  │ Merch  Custmr  Veloc   Loctn                     │   │
+│  │ Intel  Profile Check   Check                     │   │
+│  │  └────────┴──────┴────────┘                      │   │
+│  │              ↓                                   │   │
+│  │      Fraud Score & Decision                      │   │
+│  │              ↓                                   │   │
+│  │   ┌──────────┴──────────┐                        │   │
+│  │   ↓                     ↓                        │   │
+│  │ Auto-Credit         Human Review ←── Airflow     │   │
+│  │ (score > 0.8,       (score 0.4–0.8,  SLA alert   │   │
+│  │  amount < $500)      or amt ≥ $500)  if stalled  │   │
+│  │   ↓                     ↓                        │   │
+│  │ Customer            Analyst reviews evidence      │   │
+│  │ Notified            brief → approves/denies       │   │
+│  │                              ↓                   │   │
+│  │                       Customer Notified           │   │
+│  └──────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -267,7 +277,7 @@ ACTION REQUIRED: approve_credit | deny | request_more_info
 
 ---
 
-### Phase 3.4 — Error Handling & Retries
+### Phase 3.4 — Error Handling & Retries (Prerequisite for Phase 6)
 
 **What it does:** Makes the system production-resilient — retries flaky integrations, validates data at boundaries, fails gracefully.
 
@@ -296,13 +306,66 @@ class FraudDecision(BaseModel):
 
 ---
 
+### Phase 6 — Airflow Orchestration
+
+> Airflow wraps LangGraph as the outer scheduler and operations layer. LangGraph handles reasoning; Airflow handles when, how often, and what to do when things go wrong at the infrastructure level.
+
+#### 6.1 — Batch Dispute Processor (`dispute_batch_processor` DAG)
+
+**Business requirement:** The system must automatically pick up newly filed disputes without manual triggers. Disputes filed overnight must be processed before the business day opens.
+
+- Polls for `status=PENDING` disputes every 15 minutes
+- Fans out to one Airflow task per dispute (parallel processing, individual retry)
+- Each task runs the LangGraph Phase 2.2 parallel graph
+- Writes `decision`, `fraud_score`, `resolved_at` back to Postgres on completion
+- **SLA:** 95% of auto-resolvable disputes processed within 30 minutes of filing
+
+#### 6.2 — Data Refresh (`data_refresh` DAG)
+
+**Business requirement:** Merchant fraud profiles and customer spend patterns must reflect data no older than 24 hours. Stale data causes false positives (blocking legitimate customers) and false negatives (missing new fraud rings).
+
+- Runs nightly at 2am — pulls from fraud warehouse and customer service
+- Upserts into `merchant_profiles` and `customer_profiles` Postgres tables
+- Triggers ChromaDB re-embedding so long-term memory reflects fresh data
+- Replaces static `shared/mock_data.py` — production tools read from Postgres
+
+#### 6.3 — Human Review SLA Monitor (`human_review_monitor` DAG)
+
+**Business requirement:** Disputes escalated to human review must receive analyst attention within 4 business hours. Breaches trigger regulatory reporting requirements.
+
+- Runs hourly during business hours (8am–8pm)
+- Queries Postgres: `decision = 'human_review' AND updated_at < NOW() - 4 hours`
+- Pages on-call fraud analyst via Slack for each stalled dispute
+- Escalates to team lead if the dispute has been stalled for > 8 hours
+- Complements Phase 3.2: LangGraph pauses execution; Airflow enforces SLA
+
+#### 6.4 — Model Quality Gate (`model_eval_runner` DAG)
+
+**Business requirement:** Any change to prompts, models, or scoring logic must not degrade auto-resolution accuracy below 90%. Regressions must be caught before market open.
+
+- Runs nightly at 3am (after data_refresh completes)
+- Executes LangSmith eval dataset (Phase 4) against the current production graph
+- Hard gate: DAG fails and pages on-call if accuracy < 90% or false-negative rate > 5%
+- Stores daily accuracy trend in LangSmith for product review
+
+#### 6.5 — Daily Analytics Report (`fraud_analytics_report` DAG)
+
+**Business requirement:** Operations team needs a daily summary of system performance for the prior business day before the 9am standup.
+
+- Runs at 6am daily
+- Aggregates: total disputes processed, auto-credit rate, deny rate, human-review rate, avg resolution time, avg LLM cost per dispute
+- Writes report to LangSmith annotation queue and sends to ops Slack channel
+
+---
+
 ## Tech Stack
 
 | Layer | Choice |
 |---|---|
 | LLM | Claude (Anthropic) via `langchain-anthropic` |
-| Orchestration | LangGraph |
-| Short-term memory | LangGraph `SqliteSaver` |
+| Agent orchestration | LangGraph (inner workflow engine) |
+| Workflow scheduling | Apache Airflow 2.9+ (outer orchestrator — batch, SLA, data pipelines) |
+| Short-term memory | LangGraph `PostgresSaver` (shared Postgres with Airflow metadata DB) |
 | Long-term memory | ChromaDB |
 | Observability | LangSmith |
 | Data validation | Pydantic v2 |
@@ -313,12 +376,18 @@ class FraudDecision(BaseModel):
 ## Project Structure (target)
 
 ```
-fraud-dispute-agent/
+fraud-disputes-resolution/
 ├── README.md
-├── REQUIREMENTS.md          ← this file
+├── FRAUD_DISPUTE_REQUIREMENTS.md    ← this file
+├── TECH_PLAN.md
 ├── pyproject.toml
+├── docker-compose.airflow.yml       ← Phase 6: Airflow + shared Postgres
 ├── data/
-│   └── disputes.json        ← mock dispute scenarios
+│   └── disputes.json                ← mock dispute scenarios
+├── shared/
+│   ├── models.py                    ← Pydantic models (Transaction, DisputeState, FraudDecision)
+│   ├── mock_data.py                 ← dispute + customer + merchant fixtures
+│   └── tools.py                     ← shared tool definitions
 ├── phase1_1_single_agent/
 │   └── agent.py
 ├── phase1_2_state_machine/
@@ -335,10 +404,20 @@ fraud-dispute-agent/
 │   └── graph.py
 ├── phase3_4_error_handling/
 │   └── graph.py
-└── shared/
-    ├── models.py             ← Pydantic models (Transaction, DisputeState, FraudDecision)
-    ├── mock_data.py          ← dispute + customer + merchant fixtures
-    └── tools.py              ← shared tool definitions
+├── airflow/                         ← Phase 6: Airflow DAGs + operators
+│   ├── dags/
+│   │   ├── dispute_batch_processor.py
+│   │   ├── data_refresh.py
+│   │   ├── human_review_monitor.py
+│   │   ├── model_eval_runner.py
+│   │   └── fraud_analytics_report.py
+│   └── plugins/
+│       └── operators/
+│           └── langgraph_operator.py
+└── tests/
+    ├── unit/
+    ├── integration/
+    └── evals/
 ```
 
 ---
