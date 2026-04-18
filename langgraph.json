@@ -3,7 +3,8 @@
   "graphs": {
     "phase1_2_state_machine": "./phase1_2_state_machine/graph.py:build_graph",
     "phase2_1_supervisor":    "./phase2_1_supervisor/graph.py:build_graph",
-    "phase2_2_parallel":      "./phase2_2_parallel/graph.py:build_graph"
+    "phase2_2_parallel":      "./phase2_2_parallel/graph.py:build_graph",
+    "phase3_1_persistence":   "./phase3_1_persistence/graph.py:build_graph"
   },
   "env": ".env"
 }
