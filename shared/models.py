@@ -110,7 +110,10 @@ class DisputeState(TypedDict):
     decision: Literal["auto_credit", "deny", "human_review", "pending"]
     resolution_amount: float
 
-    # Human-in-the-loop (Phase 3.2)
+    # LLM's scoring reasoning — populated by score/aggregate node in every phase
+    model_reasoning: str
+
+    # Human-in-the-loop (Phase 3.2) — analyst notes entered at interrupt only
     human_notes: str
     analyst_approved: bool | None  # None = not yet reviewed
 

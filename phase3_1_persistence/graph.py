@@ -133,6 +133,7 @@ class PersistenceState(TypedDict):
     fraud_score: float
     decision: Literal["auto_credit", "deny", "human_review", "pending"]
     resolution_amount: float
+    model_reasoning: str
     human_notes: str
     analyst_approved: bool | None
     notification_sent: bool
@@ -427,7 +428,7 @@ List key_factors and provide reasoning.
 
     return {
         "fraud_score": result.fraud_score,
-        "human_notes": result.reasoning,
+        "model_reasoning": result.reasoning,
         "evidence": result.key_factors,
     }
 
@@ -769,6 +770,7 @@ async def run_dispute(app, dispute_id: str, thread_suffix: str = ""):
         "fraud_score":      0.0,
         "decision":         "pending",
         "resolution_amount":0.0,
+        "model_reasoning":  "",
         "human_notes":      "",
         "analyst_approved": None,
         "notification_sent":False,

@@ -261,7 +261,7 @@ Compute the fraud_score and list your evidence_items and reasoning.
         "fraud_score": result.fraud_score,
         # These append to existing evidence via the operator.add reducer
         "evidence": result.evidence_items,
-        "human_notes": result.reasoning,
+        "model_reasoning": result.reasoning,
     }
 
 
@@ -448,6 +448,7 @@ async def run_dispute(app, dispute_id: str):
         "fraud_score":      0.0,
         "decision":         "pending",
         "resolution_amount": 0.0,
+        "model_reasoning":  "",
         "human_notes":      "",
         "analyst_approved": None,
         "notification_sent": False,

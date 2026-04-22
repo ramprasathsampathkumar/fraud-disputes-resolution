@@ -119,7 +119,8 @@ class HumanLoopState(TypedDict):
     fraud_score: float
     decision: Literal["auto_credit", "deny", "human_review", "pending"]
     resolution_amount: float
-    human_notes: str
+    model_reasoning: str   # LLM aggregate reasoning — set by aggregate node
+    human_notes: str       # Analyst notes — set only at interrupt nodes
     analyst_approved: bool | None
     analyst_decision: str | None   # "approve_credit" | "deny" | "request_more_info"
     notification_sent: bool
@@ -169,7 +170,7 @@ def generate_evidence_brief(state: HumanLoopState, interrupt_reason: str) -> dic
         "score_label": score_label,
         "interrupt_reason": interrupt_reason,
         "evidence_lines": evidence_lines,
-        "human_notes": state.get("human_notes", ""),
+        "model_reasoning": state.get("model_reasoning", ""),
         "actions": ["approve_credit", "deny", "request_more_info"],
     }
 
@@ -191,8 +192,8 @@ def print_evidence_brief(brief: dict):
 
     evidence_text = "\n".join(brief["evidence_lines"]) or "  (no evidence collected)"
 
-    reasoning = brief.get("human_notes", "")
-    reasoning_section = f"\n[dim]Reasoning: {reasoning[:200]}[/dim]" if reasoning else ""
+    reasoning = brief.get("model_reasoning", "")
+    reasoning_section = f"\n[dim]Model reasoning: {reasoning[:200]}[/dim]" if reasoning else ""
 
     actions = " | ".join(f"[bold]{a}[/bold]" for a in brief["actions"])
 
@@ -427,7 +428,7 @@ Compute fraud_score, key_factors, and reasoning.
     ])
     return {
         "fraud_score": result.fraud_score,
-        "human_notes": result.reasoning,
+        "model_reasoning": result.reasoning,
         "evidence": result.key_factors,
     }
 
@@ -468,7 +469,7 @@ def issue_credit(state: HumanLoopState) -> dict:
             "resolution_amount": txn["amount"],
             "analyst_approved": True,
             "analyst_decision": decision,
-            "human_notes": notes or state.get("human_notes", ""),
+            "human_notes": notes or state.get("model_reasoning", ""),
             "evidence": [
                 f"ANALYST APPROVED: ${txn['amount']:.2f} credit authorised by human reviewer"
             ],
@@ -733,6 +734,7 @@ async def run_dispute(app, dispute_id: str):
         "fraud_score":      0.0,
         "decision":         "pending",
         "resolution_amount":0.0,
+        "model_reasoning":  "",
         "human_notes":      "",
         "analyst_approved": None,
         "analyst_decision": None,
